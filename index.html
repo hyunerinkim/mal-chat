@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>말 — Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <script type="importmap">
+      {
+        "imports": {
+          "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.32/dist/vue.esm-browser.js",
+          "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@1.2.0/dist/browser/index.js",
+          "@graffiti-garden/implementation-decentralized": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-decentralized@0.0.9/dist/browser/index.js",
+          "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@1.2.2/dist/browser/plugin.mjs"
+        }
+      }
+    </script>
+    <script src="index.js" type="module"></script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div class="loading-screen">Loading…</div>
+    </div>
+
+    <template id="template">
+
+      
+      <div v-if="!$graffitiSession.value" class="login-screen">
+        <div class="login-content">
+          <div class="login-logo">말</div>
+          <p class="login-sub">bilingual messaging</p>
+          <button class="btn-login" @click="$graffiti.login()">Sign in</button>
+        </div>
+      </div>
+
+      
+      <div v-else class="app-shell">
+
+        
+        <div v-if="!activeDM" class="view view-list">
+          <div class="topbar">
+            <div class="topbar-title">Messages</div>
+            <button class="icon-btn" @click="showProfileSetup = true" title="Edit profile">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </button>
+          </div>
+
+          
+          <div class="search-wrap">
+            <div class="search-box">
+              <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input
+                type="text"
+                v-model="profileSearch"
+                placeholder="Search by name…"
+                class="search-input"
+                @input="searchProfiles"
+              />
+            </div>
+            
+            <div v-if="profileSearch && searchResults.length" class="search-results">
+              <div
+                v-for="profile in searchResults"
+                :key="profile.actor"
+                class="search-result-item"
+                @click="startDM(profile)"
+              >
+                <div class="avatar" :style="{ background: avatarColor(profile.actor) }">
+                  {{ initials(profile.value.name) }}
+                </div>
+                <div class="result-info">
+                  <span class="result-name">{{ profile.value.name }}</span>
+                  <span class="result-sub">Tap to message</span>
+                </div>
+              </div>
+            </div>
+            <div v-else-if="profileSearch && !searchResults.length && !isSearching" class="search-results">
+              <div class="search-no-results">No users found</div>
+            </div>
+          </div>
+
+          
+          <div class="dm-list">
+            <p v-if="areDMsLoading" class="list-loading"><em>Loading chats…</em></p>
+            <div v-else-if="!sortedDMs.length" class="list-empty">
+              Search for someone to start a conversation
+            </div>
+            <div
+              v-else
+              v-for="dm in sortedDMs"
+              :key="dm.url"
+              class="dm-row"
+              @click="openDM(dm)"
+            >
+              <div class="avatar" :style="{ background: avatarColor(otherActor(dm)) }">
+                {{ dm._otherName ? initials(dm._otherName) : '?' }}
+              </div>
+              <div class="dm-row-info">
+                <div class="dm-row-name">{{ dm._otherName || 'Unknown' }}</div>
+                <div class="dm-row-preview">{{ dm._lastMessage || '…' }}</div>
+              </div>
+              <div class="dm-row-time">{{ dm._lastTime || '' }}</div>
+            </div>
+          </div>
+
+          
+          <div class="bottom-nav">
+            <button class="bottom-nav-item active">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>Chats</span>
+            </button>
+            <button class="bottom-nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M3 20c0-4 2.7-7 6-7s6 3 6 7"/><circle cx="17" cy="7" r="3"/><path d="M21 20c0-3-1.8-5.5-4-6"/></svg>
+              <span>Contacts</span>
+            </button>
+          </div>
+        </div>
+
+        
+        <div v-else class="view view-chat">
+          <div class="chat-topbar">
+            <button class="icon-btn" @click="closeDM">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="m12 5-7 7 7 7"/></svg>
+            </button>
+            <div class="chat-topbar-name">{{ activeDMOtherName }}</div>
+            <button class="icon-btn" @click="showHamburger = !showHamburger">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+            </button>
+
+            
+            <div v-if="showHamburger" class="hamburger-menu">
+              <div class="hamburger-item">Call</div>
+              <div class="hamburger-item">FaceTime</div>
+              <div class="hamburger-divider"></div>
+              <div class="hamburger-item language-toggle" @click="toggleGlobalTranslation">
+                <span>Language</span>
+                <span class="toggle-badge" :class="{ on: globalTranslation }">
+                  {{ globalTranslation ? 'On' : 'Off' }}
+                </span>
+              </div>
+              <div v-if="globalTranslation" class="hamburger-hint">Showing translations for all messages</div>
+            </div>
+            
+            <div v-if="showHamburger" class="hamburger-backdrop" @click="showHamburger = false"></div>
+          </div>
+
+          
+          <div v-if="globalTranslation" class="translation-bar">
+            <span>Language: ON · Showing translations for all messages</span>
+          </div>
+
+          
+          <div class="messages-wrap" ref="messagesEl">
+            <p v-if="areMessagesLoading" class="list-loading"><em>Loading…</em></p>
+            <div v-else class="messages-inner">
+              <div
+                v-for="msg in sortedMessages"
+                :key="msg.url"
+                class="msg-row"
+                :class="{ mine: msg.actor === $graffitiSession.value.actor }"
+              >
+                <div
+                  class="bubble"
+                  :class="{ mine: msg.actor === $graffitiSession.value.actor }"
+                  @click="msg.actor !== $graffitiSession.value.actor && toggleTranslation(msg.url)"
+                >
+                  <span class="bubble-text">{{ msg.value.content }}</span>
+                  
+                  <span
+                    v-if="msg.actor !== $graffitiSession.value.actor && (globalTranslation || revealedTranslations.has(msg.url)) && msg.value.translation"
+                    class="bubble-translation"
+                  >{{ msg.value.translation }}</span>
+                </div>
+                <button
+                  v-if="msg.actor === $graffitiSession.value.actor"
+                  class="delete-btn"
+                  @click="deleteMessage(msg)"
+                  :disabled="isDeleting.has(msg.url)"
+                >✕</button>
+              </div>
+            </div>
+          </div>
+
+          
+          <div class="input-area">
+            <button class="plus-btn">+</button>
+            <input
+              type="text"
+              v-model="myMessage"
+              placeholder="Message"
+              class="msg-input"
+              @keyup.enter="sendMessage"
+            />
+            <button
+              class="send-btn"
+              @click="sendMessage"
+              :disabled="!myMessage || isSending"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2 12l20-9-9 20-2-9-9-2z"/></svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      
+      <div v-if="showProfileSetup" class="modal-backdrop" @click.self="showProfileSetup = false">
+        <div class="modal">
+          <h3 class="modal-title">Your Profile</h3>
+          <input
+            type="text"
+            v-model="myName"
+            placeholder="Your name"
+            class="modal-input"
+          />
+          <div class="modal-actions">
+            <button class="btn-secondary" @click="showProfileSetup = false">Cancel</button>
+            <button class="btn-primary" @click="saveProfile">Save</button>
+          </div>
+        </div>
+      </div>
+
+    </template>
+  </body>
+</html>
